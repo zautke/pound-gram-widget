@@ -1,0 +1,26 @@
+# Xcode
+build/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# XcodeGen output is generated
+PoundsGrams.xcodeproj/
+
+# Swift PM
+.build/
+Packages/*/.build/
+Packages/*/Package.resolved
+.swiftpm/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Snapshot test failures
+**/__Snapshots__/*.png.failed
+**/FailureDiffs/

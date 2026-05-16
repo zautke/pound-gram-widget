@@ -1,0 +1,37 @@
+disabled_rules:
+  - trailing_comma
+  - todo
+  - line_length
+
+identifier_name:
+  min_length: 1
+  excluded:
+    - g
+    - lb
+    - v
+    - n
+    - t
+    - to
+    - fs
+
+cyclomatic_complexity:
+  warning: 12
+  error: 20
+
+opt_in_rules:
+  - empty_count
+  - explicit_init
+  - first_where
+  - sorted_first_last
+  - toggle_bool
+  - unused_import
+
+excluded:
+  - .build
+  - Packages/*/.build
+  - PoundsGrams.xcodeproj
+
+line_length: 140
+function_body_length: 80
+type_body_length: 400
+file_length: 600
