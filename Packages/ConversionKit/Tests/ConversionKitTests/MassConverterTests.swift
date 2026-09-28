@@ -72,7 +72,7 @@ struct MassConverterTests {
 
     @Test("formatConversion full expression")
     func formatExpr() {
-        #expect(MassConverter.formatConversion(value: 1, unit: .pounds) == "1# = 453.5924g")
+        #expect(MassConverter.formatConversion(value: 1, unit: .pounds) == "1# = 453.59g")
         #expect(MassConverter.formatConversion(value: 0, unit: .grams) == "0g = 0#")
     }
 

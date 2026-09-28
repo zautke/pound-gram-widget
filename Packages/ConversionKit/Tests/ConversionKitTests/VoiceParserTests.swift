@@ -84,4 +84,30 @@ struct VoiceParserTests {
         let r = try? VoiceParser.parse("-5 pounds").get()
         #expect(r?.value == 5 || r?.value == 0)
     }
+
+    @Test("fromVoice converts pounds to grams")
+    func fromVoicePounds() throws {
+        let lc = try LastConversion.fromVoice("five pounds").get()
+        #expect(lc.inputValue == 5)
+        #expect(lc.inputUnit == .pounds)
+        #expect(lc.outputUnit == .grams)
+        #expect(abs(lc.outputValue - 5 * MassConverter.gramsPerPound) < 1e-9)
+    }
+
+    @Test("fromVoice converts grams to pounds")
+    func fromVoiceGrams() throws {
+        let lc = try LastConversion.fromVoice("100 grams").get()
+        #expect(lc.inputUnit == .grams)
+        #expect(lc.outputUnit == .pounds)
+        #expect(abs(lc.outputValue - 100 / MassConverter.gramsPerPound) < 1e-9)
+    }
+
+    @Test("fromVoice propagates parse failure")
+    func fromVoiceFailure() {
+        if case let .failure(e) = LastConversion.fromVoice("pounds please") {
+            #expect(e == .noNumber)
+        } else {
+            Issue.record("expected noNumber")
+        }
+    }
 }

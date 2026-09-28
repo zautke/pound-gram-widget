@@ -99,3 +99,18 @@ public enum VoiceParser {
         return total + current
     }
 }
+
+public extension LastConversion {
+    /// Parses a spoken phrase and converts it to the opposite unit, ready to store and display.
+    static func fromVoice(_ transcript: String, locale: Locale = .current) -> Swift.Result<LastConversion, VoiceParser.ParseError> {
+        VoiceParser.parse(transcript, locale: locale).map { parsed in
+            let outUnit: MassUnit = parsed.unit == .pounds ? .grams : .pounds
+            return LastConversion(
+                inputValue: parsed.value,
+                inputUnit: parsed.unit,
+                outputValue: MassConverter.convert(parsed.value, from: parsed.unit, to: outUnit),
+                outputUnit: outUnit
+            )
+        }
+    }
+}
