@@ -28,6 +28,7 @@ opt_in_rules:
 
 excluded:
   - .build
+  - build
   - Packages/*/.build
   - PoundsGrams.xcodeproj
 

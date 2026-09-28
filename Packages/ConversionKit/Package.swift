@@ -14,12 +14,6 @@ let package = Package(
             targets: ["ConversionKit"]
         )
     ],
-    dependencies: [
-        .package(
-            url: "https://github.com/pointfreeco/swift-snapshot-testing",
-            from: "1.19.2"
-        )
-    ],
     targets: [
         .target(
             name: "ConversionKit",
@@ -27,10 +21,7 @@ let package = Package(
         ),
         .testTarget(
             name: "ConversionKitTests",
-            dependencies: [
-                "ConversionKit",
-                .product(name: "SnapshotTesting", package: "swift-snapshot-testing")
-            ],
+            dependencies: ["ConversionKit"],
             path: "Tests/ConversionKitTests"
         )
     ]

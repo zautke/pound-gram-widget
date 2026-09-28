@@ -3,7 +3,8 @@ import SwiftUI
 
 @main
 struct PoundsGramsApp: App {
-    @State private var deepLink: DeepLink?
+    /// A simulator test-audio launch opens straight into a listening voice sheet.
+    @State private var deepLink: DeepLink? = SpeechService.testAudioURL == nil ? nil : .voice
 
     var body: some Scene {
         WindowGroup {

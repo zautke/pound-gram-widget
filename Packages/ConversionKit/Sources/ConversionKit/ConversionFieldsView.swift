@@ -1,6 +1,5 @@
 #if os(iOS)
     import SwiftUI
-    import UIKit
 
     public struct ConversionFieldsView: View {
         public enum Field: Hashable { case pounds, grams }
@@ -18,14 +17,9 @@
         }
 
         public var body: some View {
-            VStack(spacing: 16) {
-                row(label: "Pounds (#)", text: $poundsText, field: .pounds, keyboard: .decimalPad)
-                    .accessibilityLabel("Pounds")
-                    .accessibilityValue(poundsText.isEmpty ? "empty" : poundsText)
-
-                row(label: "Grams (g)", text: $gramsText, field: .grams, keyboard: .decimalPad)
-                    .accessibilityLabel("Grams")
-                    .accessibilityValue(gramsText.isEmpty ? "empty" : gramsText)
+            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 16) {
+                row(label: "Pounds (#)", a11yLabel: "Pounds", text: $poundsText, field: .pounds)
+                row(label: "Grams (g)", a11yLabel: "Grams", text: $gramsText, field: .grams)
             }
             .padding()
             .onChange(of: poundsText) { _, new in
@@ -36,19 +30,25 @@
                 guard focused == .grams else { return }
                 propagate(from: .grams, text: new)
             }
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focused = nil }
+                }
+            }
         }
 
-        private func row(label: String, text: Binding<String>, field: Field, keyboard: UIKeyboardType) -> some View {
-            HStack {
+        private func row(label: String, a11yLabel: String, text: Binding<String>, field: Field) -> some View {
+            GridRow {
                 Text(label)
-                    .frame(width: 100, alignment: .leading)
                     .font(.headline)
+                    .accessibilityHidden(true)
                 TextField("0", text: text)
-                    .keyboardType(keyboard)
+                    .keyboardType(.decimalPad)
                     .textFieldStyle(.roundedBorder)
                     .focused($focused, equals: field)
                     .frame(minHeight: rowHeight)
-                    .submitLabel(.done)
+                    .accessibilityLabel(a11yLabel)
             }
         }
 

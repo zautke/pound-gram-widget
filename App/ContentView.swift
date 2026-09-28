@@ -3,7 +3,9 @@ import SwiftUI
 
 struct ContentView: View {
     @Binding var deepLink: DeepLink?
-    @State private var showVoice: Bool = false
+    @State private var showVoice = false
+    @State private var lastConversion: LastConversion? = SharedStore.load()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -12,7 +14,8 @@ struct ContentView: View {
                     .font(.largeTitle.bold())
                     .accessibilityAddTraits(.isHeader)
 
-                ConversionFieldsView()
+                ConversionFieldsView(initialGrams: lastGrams)
+                    .id(lastConversion?.timestamp)
 
                 Spacer()
 
@@ -23,21 +26,36 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 8)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
             }
             .padding()
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showVoice) {
+            .sheet(isPresented: $showVoice, onDismiss: reload) {
                 VoiceConvertView()
                     .presentationDetents([.medium, .large])
             }
-            .onChange(of: deepLink) { _, new in
-                if new == .voice {
-                    showVoice = true
-                    deepLink = nil
-                }
+            .onChange(of: deepLink, initial: true) { _, new in
+                guard new == .voice else { return }
+                showVoice = true
+                deepLink = nil
+            }
+            // Every launch and every return to the foreground lands in a listening voice sheet.
+            .onChange(of: scenePhase, initial: true) { _, phase in
+                guard phase == .active else { return }
+                reload()
+                showVoice = true
             }
         }
+    }
+
+    private var lastGrams: Double? {
+        guard let lc = lastConversion else { return nil }
+        return lc.inputUnit == .grams ? lc.inputValue : lc.outputValue
+    }
+
+    private func reload() {
+        let latest = SharedStore.load()
+        if latest != lastConversion { lastConversion = latest }
     }
 }
 

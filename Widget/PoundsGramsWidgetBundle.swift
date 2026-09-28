@@ -5,5 +5,6 @@ import WidgetKit
 struct PoundsGramsWidgetBundle: WidgetBundle {
     var body: some Widget {
         PoundsGramsWidget()
+        VoiceControl()
     }
 }

@@ -43,16 +43,18 @@ extension MassUnit: Codable {}
 public enum SharedStore {
     public static let appGroupID = "group.com.braisenly.pounds-grams"
     public static let lastConversionKey = "lastConversion"
+    /// WidgetKit kind shared by the widget and the app's reload calls.
+    public static let widgetKind = "PoundsGramsWidget"
+    /// Deep link that opens the voice converter and starts listening.
+    public static let voiceURL = URL(string: "poundsgrams://voice")!
 
-    public static func defaults() -> UserDefaults {
+    private static func defaults() -> UserDefaults {
         UserDefaults(suiteName: appGroupID) ?? .standard
     }
 
     public static func save(_ conversion: LastConversion) {
         guard let data = try? JSONEncoder().encode(conversion) else { return }
-        let store = defaults()
-        store.set(data, forKey: lastConversionKey)
-        store.synchronize()
+        defaults().set(data, forKey: lastConversionKey)
     }
 
     public static func load() -> LastConversion? {

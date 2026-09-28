@@ -26,32 +26,32 @@ struct PoundsGramsWidgetView: View {
     var entry: PoundsGramsEntry
 
     var body: some View {
-        Button(intent: LaunchVoiceIntent()) {
-            VStack(spacing: 6) {
-                HStack(spacing: 4) {
-                    Image(systemName: "mic.fill")
-                        .accessibilityHidden(true)
-                    Text("Tap to convert")
-                        .font(.caption.weight(.semibold))
-                }
-                .foregroundStyle(.secondary)
-
-                if let lc = entry.last {
-                    Text(lc.displayString)
-                        .font(.system(.title3, design: .rounded).weight(.bold))
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                } else {
-                    Text("Say \u{201C}5 pounds\u{201D} or \u{201C}100 grams\u{201D}")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
-                }
+        VStack(spacing: 6) {
+            HStack(spacing: 4) {
+                Image(systemName: "mic.fill")
+                    .accessibilityHidden(true)
+                Text("Tap to convert")
+                    .font(.caption.weight(.semibold))
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .foregroundStyle(.secondary)
+
+            if let lc = entry.last {
+                Text(lc.displayString)
+                    .font(.system(.title3, design: .rounded).weight(.bold))
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Say \u{201C}5 pounds\u{201D} or \u{201C}100 grams\u{201D}")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .widgetURL(SharedStore.voiceURL)
+        .accessibilityElement(children: .ignore)
+        .accessibilityAddTraits(.isButton)
         .accessibilityLabel(entry.last.map { "Voice convert. Last: \($0.accessibilityString)" }
             ?? "Voice convert. Say a value like 5 pounds or 100 grams.")
         .accessibilityHint("Opens voice converter")
@@ -60,7 +60,7 @@ struct PoundsGramsWidgetView: View {
 }
 
 struct PoundsGramsWidget: Widget {
-    let kind = "PoundsGramsWidget"
+    let kind = SharedStore.widgetKind
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: PoundsGramsProvider()) { entry in
