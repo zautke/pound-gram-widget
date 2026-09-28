@@ -26,6 +26,8 @@ struct VoiceConvertView: View {
     @State private var pausedRemaining: TimeInterval?
     /// Seconds the current attempt may listen for; the ring starts counting when the mic goes live.
     @State private var attemptBudget: TimeInterval?
+    /// Incremented per `listen()` call; only the newest call may reset the shared UI state.
+    @State private var listenToken = 0
 
     private var statusMessage: String {
         if speech.isPreparing { return "Downloading speech model\u{2026}" }
@@ -147,13 +149,16 @@ struct VoiceConvertView: View {
     /// One listen window. Speech that doesn't parse shows an error, pauses the countdown for a second,
     /// then listens again with a fresh recognizer for whatever time is left.
     private func listen() async {
-        let request = listenRequest
+        // Per call, not per request: SwiftUI can run `.task(id:)` twice for the same request at launch,
+        // and the cancelled duplicate must not clear the live listen's ring.
+        listenToken += 1
+        let token = listenToken
         errorMessage = nil
         inSession = true
         var budget: TimeInterval? = listenSeconds > 0 ? Double(listenSeconds) : nil
         defer {
             // A replacement listen may already own this state.
-            if request == listenRequest {
+            if token == listenToken {
                 inSession = false
                 ringDeadline = nil
                 pausedRemaining = nil
