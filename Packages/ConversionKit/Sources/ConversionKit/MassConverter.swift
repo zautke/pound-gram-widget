@@ -78,7 +78,7 @@ public enum MassConverter {
     private static func trim(_ v: Double, locale: Locale = .current) -> String {
         guard let safe = finite(v) else { return "" }
         let fs: FloatingPointFormatStyle<Double> = .number
-            .precision(.fractionLength(0 ... 4))
+            .precision(.fractionLength(0 ... 2))
             .locale(locale)
         return safe.formatted(fs)
     }

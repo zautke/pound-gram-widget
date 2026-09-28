@@ -8,8 +8,11 @@
         @State private var gramsText: String = ""
         @FocusState private var focused: Field?
         @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 44
+        private let onBeginEditing: () -> Void
 
-        public init(initialGrams: Double? = nil) {
+        /// - Parameter onBeginEditing: Called when the user taps into the fields from elsewhere.
+        public init(initialGrams: Double? = nil, onBeginEditing: @escaping () -> Void = {}) {
+            self.onBeginEditing = onBeginEditing
             if let g = initialGrams, g.isFinite {
                 _gramsText = State(initialValue: MassConverter.displayString(g))
                 _poundsText = State(initialValue: MassConverter.displayString(MassConverter.poundsFromGrams(g)))
@@ -22,6 +25,14 @@
                 row(label: "Grams (g)", a11yLabel: "Grams", text: $gramsText, field: .grams)
             }
             .padding()
+            // Tapping into the fields starts a fresh conversion: clear the previous values.
+            // Moving between the two fields keeps what was typed.
+            .onChange(of: focused) { old, new in
+                guard old == nil, new != nil else { return }
+                onBeginEditing()
+                poundsText = ""
+                gramsText = ""
+            }
             .onChange(of: poundsText) { _, new in
                 guard focused == .pounds else { return }
                 propagate(from: .pounds, text: new)

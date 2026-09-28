@@ -4,6 +4,24 @@ import Testing
 
 @Suite("SharedStore + LastConversion")
 struct SharedStoreTests {
+    @Test("save records history newest first and keeps the last result")
+    func history() {
+        SharedStore.clear()
+        let first = LastConversion(inputValue: 1, inputUnit: .pounds, outputValue: 453.59237, outputUnit: .grams,
+                                   timestamp: Date(timeIntervalSince1970: 1))
+        let second = LastConversion(inputValue: 100, inputUnit: .grams, outputValue: 0.2205, outputUnit: .pounds,
+                                    timestamp: Date(timeIntervalSince1970: 2))
+        SharedStore.save(first)
+        SharedStore.save(second)
+        #expect(SharedStore.history() == [second, first])
+        #expect(SharedStore.load() == second)
+
+        SharedStore.deleteFromHistory(second)
+        #expect(SharedStore.history() == [first])
+        #expect(SharedStore.load() == second)
+        SharedStore.clear()
+    }
+
     @Test("LastConversion encodes/decodes roundtrip")
     func codable() throws {
         let original = LastConversion(

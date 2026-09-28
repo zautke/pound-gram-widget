@@ -1,6 +1,7 @@
 import AVFoundation
 import Foundation
 import Observation
+import os
 import Speech
 
 /// Captures one short spoken phrase from the microphone and returns its transcript.
@@ -18,6 +19,12 @@ final class SpeechService {
     private(set) var isListening: Bool = false
     /// True while the on-device speech model is downloading.
     private(set) var isPreparing: Bool = false
+    /// True from the moment ``recognize(timeout:silenceTimeout:)`` is called until it returns,
+    /// including model download and mic start-up.
+    private(set) var isBusy = false
+    /// Incremented per ``recognize(timeout:silenceTimeout:)`` call. A listen cancelled because a newer one
+    /// started must not reset state the newer one now owns.
+    private var runID = 0
 
     enum Error: Swift.Error, LocalizedError {
         case notAuthorized
@@ -41,11 +48,13 @@ final class SpeechService {
         let isFinal: Bool
     }
 
+    private let log = Logger(subsystem: "com.braisenly.pounds-grams", category: "speech")
     private let audioEngine = AVAudioEngine()
     private var finalizedText = ""
     private var lastHeard = ContinuousClock.now
-    /// True while this service holds an ``AudioSession`` lease for the microphone.
-    private var holdsSessionLease = false
+    /// Id of the listen that currently owns the engine's input tap. A listen cancelled because a newer
+    /// one started must not stop the engine out from under it.
+    private var micOwner = 0
 
     /// Simulator-only test hook: transcribe this audio file instead of the microphone.
     /// Set with `SIMCTL_CHILD_POUNDSGRAMS_SPEECH_FILE=<path> xcrun simctl launch …` (see `Scripts/sim-voice-test.sh`).
@@ -68,12 +77,17 @@ final class SpeechService {
     }
 
     /// Listens until the speaker pauses for `silenceTimeout` or `timeout` elapses.
+    /// A `nil` timeout listens indefinitely: only a pause after speech (or cancellation) ends it.
     func recognize(
-        timeout: Duration = .seconds(8),
+        timeout: Duration? = .seconds(8),
         silenceTimeout: Duration = .milliseconds(1500)
     ) async throws -> String {
         guard AVAudioApplication.shared.recordPermission == .granted || Self.testAudioURL != nil
         else { throw Error.notAuthorized }
+        runID += 1
+        let id = runID
+        isBusy = true
+        defer { if id == runID { isBusy = false } }
         #if targetEnvironment(simulator)
             return try await recognizeWithSFSpeech(timeout: timeout, silenceTimeout: silenceTimeout)
         #else
@@ -83,7 +97,7 @@ final class SpeechService {
 
     // MARK: Device backend — SpeechAnalyzer
 
-    private func recognizeWithAnalyzer(timeout: Duration, silenceTimeout: Duration) async throws -> String {
+    private func recognizeWithAnalyzer(timeout: Duration?, silenceTimeout: Duration) async throws -> String {
         guard let locale = await DictationTranscriber.supportedLocale(equivalentTo: Locale(identifier: "en_US"))
         else { throw Error.unavailable }
         let transcriber = DictationTranscriber(locale: locale, preset: .progressiveShortDictation)
@@ -107,9 +121,11 @@ final class SpeechService {
         )
         try await analyzer.setContext(context)
         try await analyzer.prepareToAnalyze(in: analyzerFormat)
+        // SwiftUI can restart the calling `.task` right after launch; don't open the mic for a dead listen.
+        try Task.checkCancellation()
 
         let (inputs, continuation) = AsyncStream.makeStream(of: AnalyzerInput.self)
-        try await startMic { micFormat in
+        let mic = try await startMic { micFormat in
             guard let converter = AVAudioConverter(from: micFormat, to: analyzerFormat) else {
                 throw Error.audioSession("unsupported microphone format")
             }
@@ -127,7 +143,7 @@ final class SpeechService {
             outcome = .failure(error)
         }
 
-        stopMic()
+        stopMic(mic)
         continuation.finish()
         await analyzer.cancelAndFinishNow()
         return try outcome.get()
@@ -139,17 +155,18 @@ final class SpeechService {
         /// SpeechAnalyzer's models need the Neural Engine, which the Simulator doesn't emulate, so
         /// `DictationTranscriber` never loads there. Apple's forum guidance: fall back to SFSpeechRecognizer
         /// in Simulator builds (https://developer.apple.com/forums/thread/806765).
-        private func recognizeWithSFSpeech(timeout: Duration, silenceTimeout: Duration) async throws -> String {
+        private func recognizeWithSFSpeech(timeout: Duration?, silenceTimeout: Duration) async throws -> String {
             guard SFSpeechRecognizer.authorizationStatus() == .authorized else { throw Error.notAuthorized }
             guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en_US")), recognizer.isAvailable
             else { throw Error.unavailable }
 
             let request: SFSpeechRecognitionRequest
+            var mic: Int?
             if let url = Self.testAudioURL {
                 request = SFSpeechURLRecognitionRequest(url: url)
             } else {
                 let buffered = SFSpeechAudioBufferRecognitionRequest()
-                try await startMic { _ in Self.makeAppendingTap(buffered) }
+                mic = try await startMic { _ in Self.makeAppendingTap(buffered) }
                 request = buffered
             }
             request.shouldReportPartialResults = true
@@ -160,7 +177,7 @@ final class SpeechService {
             let outcome = await run(updates, timeout: timeout, silenceTimeout: silenceTimeout)
 
             task.cancel()
-            stopMic()
+            if let mic { stopMic(mic) }
             continuation.finish()
             return try outcome.get()
         }
@@ -190,14 +207,20 @@ final class SpeechService {
     /// Resets live state, then races the update stream against the silence/timeout clock.
     private func run(
         _ updates: some AsyncSequence<Update, any Swift.Error> & Sendable,
-        timeout: Duration,
+        timeout: Duration?,
         silenceTimeout: Duration
     ) async -> Result<String, Swift.Error> {
         transcript = ""
         finalizedText = ""
         lastHeard = .now
+        let id = runID
         isListening = true
-        defer { isListening = false }
+        log.info("listen started, timeout \(String(describing: timeout)), silence \(silenceTimeout)")
+        defer {
+            if id == runID {
+                isListening = false
+            }
+        }
         do {
             return try await .success(withThrowingTaskGroup(of: String.self) { group in
                 group.addTask { try await self.consume(updates) }
@@ -207,14 +230,17 @@ final class SpeechService {
                 return first
             })
         } catch {
+            log.error("listen ended with error: \(String(describing: error), privacy: .public)")
             return .failure(error)
         }
     }
 
     private func consume(_ updates: some AsyncSequence<Update, any Swift.Error> & Sendable) async throws -> String {
         for try await update in updates {
+            log.debug("update final=\(update.isFinal) \(update.text, privacy: .public)")
             ingest(text: update.text, isFinal: update.isFinal)
         }
+        log.info("result stream ended, transcript '\(self.transcript, privacy: .public)'")
         return transcript
     }
 
@@ -229,47 +255,53 @@ final class SpeechService {
         lastHeard = .now
     }
 
-    private func waitForEndOfSpeech(timeout: Duration, silenceTimeout: Duration) async throws -> String {
-        let deadline = ContinuousClock.now + timeout
+    private func waitForEndOfSpeech(timeout: Duration?, silenceTimeout: Duration) async throws -> String {
+        let deadline = timeout.map { ContinuousClock.now + $0 }
         while true {
             try await Task.sleep(for: .milliseconds(200))
             if !transcript.isEmpty, ContinuousClock.now - lastHeard > silenceTimeout {
                 return transcript
             }
-            if ContinuousClock.now >= deadline {
+            if let deadline, ContinuousClock.now >= deadline {
                 guard !transcript.isEmpty else { throw Error.noSpeech }
                 return transcript
             }
         }
     }
 
-    /// Activates the audio session and taps the mic; `makeTap` receives the mic's native format.
-    private func startMic(_ makeTap: (AVAudioFormat) throws -> AVAudioNodeTapBlock) async throws {
+    /// Takes an ``AudioSession`` lease and taps the mic; `makeTap` receives the mic's native format.
+    /// Returns the owner id to hand back to ``stopMic(_:)``.
+    private func startMic(_ makeTap: (AVAudioFormat) throws -> AVAudioNodeTapBlock) async throws -> Int {
         do {
             try await AudioSession.acquire()
-            holdsSessionLease = true
+        } catch {
+            throw Error.audioSession(error.localizedDescription)
+        }
+        micOwner += 1
+        let owner = micOwner
+        do {
             let input = audioEngine.inputNode
             let micFormat = input.outputFormat(forBus: 0)
             input.removeTap(onBus: 0)
             input.installTap(onBus: 0, bufferSize: 4096, format: micFormat, block: try makeTap(micFormat))
             audioEngine.prepare()
             try audioEngine.start()
+            return owner
         } catch let error as Error {
-            stopMic()
+            stopMic(owner)
             throw error
         } catch {
-            stopMic()
+            stopMic(owner)
             throw Error.audioSession(error.localizedDescription)
         }
     }
 
-    private func stopMic() {
+    /// Releases this listen's session lease; stops the engine only if no newer listen has taken it over.
+    private func stopMic(_ owner: Int) {
+        AudioSession.release()
+        guard owner == micOwner else { return }
         audioEngine.stop()
         audioEngine.inputNode.removeTap(onBus: 0)
-        if holdsSessionLease {
-            holdsSessionLease = false
-            AudioSession.release()
-        }
     }
 
     /// Built `nonisolated` so the closure is not MainActor-isolated: it runs on the realtime audio thread.
