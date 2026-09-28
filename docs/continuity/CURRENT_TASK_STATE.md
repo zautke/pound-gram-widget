@@ -1,11 +1,10 @@
 # Current Task State (2026-09-28)
 
-**Branch:** `feat/speechanalyzer-voice-first` @ `b046db1` + uncommitted changes
-(ContentView, SpeechService, TTSService, VoiceConvertView, ConversionFieldsView, SharedStore(+Tests), new App/AppSettings.swift).
+**Branch:** `feat/speechanalyzer-voice-first`, open as PR #1 (https://github.com/zautke/pound-gram-widget/pull/1) against `main`.
 
-**Last action:** history swipe-left delete (`SharedStore.deleteFromHistory`, `.onDelete` in `HistoryPanel`), built + launched on hemoila. 30 package tests pass.
+**Last action:** addressed the Codex, Graphify, and Copilot review findings on PR #1 (audio session activation race, private transcript logging, per-run guards, sample playback cancellation, ring clock, doc corrections).
 
 **Resume:**
-1. Ask user to verify on device: retro voice, history delete, panel swipe-right close.
-2. Commit when asked (branch already off main).
-3. Build/run via Xcode MCP: `BuildProject` then `RunProject` (workspace `workspace-CV31PUYjiP` may change; re-open `PoundsGrams.xcodeproj`). Never run `xcodegen generate` in parallel with an Xcode build.
+1. Check PR #1 for new review comments; merge when approved.
+2. On-device checks still open: see TASKS.md.
+3. Build/run via Xcode MCP: `BuildProject` then `RunProject` (the workspace identifier changes between Xcode sessions; list workspaces first). Never run `xcodegen generate` in parallel with an Xcode build.

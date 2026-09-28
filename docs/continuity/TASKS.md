@@ -9,13 +9,12 @@
 - [x] Listen Time picker + "Keep Last Result" toggle in Settings panel
 - [x] Persistent history with day headers (Today / Yesterday / full date), swipe-left delete
 - [x] Tapping a text field clears both fields and closes the voice sheet
-- [x] Retro Apple II-style TTS voice
+- [x] Natural TTS: best installed US English female voice; Settings shows it and plays a sample
 - [x] Fix: duplicate listen at launch killed the live one (per-run IDs in SpeechService)
 
 ## Open
-- [ ] Commit the uncommitted work on `feat/speechanalyzer-voice-first` (user asked "all together" for the first commit; ask again)
-- [ ] Verify on hemoila: retro voice audible (Fred installed?), history swipe-delete vs panel swipe-right-close
-- [ ] Verify on hemoila: widget tap, Control Center control (OpenURLIntent from controls is reported flaky), Siri phrase
+- [ ] Verify on device: Premium voice sample, retry flow after an unparseable phrase, history swipe-delete vs panel swipe-right-close
+- [ ] Verify on device: widget tap, Control Center control (OpenURLIntent from controls is reported flaky), Siri phrase
 - [ ] Simulator voice test: first run timed out (~13 s Siri-server connect > listen timeout); re-run `Scripts/sim-voice-test.sh`
 - [ ] Decide: should deleting the newest history entry also clear the saved last result? (currently no)
 - [ ] Optional: keep or drop the os.Logger `[speech]` lines in SpeechService

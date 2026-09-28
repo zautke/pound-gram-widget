@@ -98,13 +98,14 @@ final class SpeechService {
     // MARK: Device backend — SpeechAnalyzer
 
     private func recognizeWithAnalyzer(timeout: Duration?, silenceTimeout: Duration) async throws -> String {
+        let id = runID
         guard let locale = await DictationTranscriber.supportedLocale(equivalentTo: Locale(identifier: "en_US"))
         else { throw Error.unavailable }
         let transcriber = DictationTranscriber(locale: locale, preset: .progressiveShortDictation)
 
         if let install = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
             isPreparing = true
-            defer { isPreparing = false }
+            defer { if id == runID { isPreparing = false } }
             try await install.downloadAndInstall()
         }
 
@@ -223,7 +224,7 @@ final class SpeechService {
         }
         do {
             return try await .success(withThrowingTaskGroup(of: String.self) { group in
-                group.addTask { try await self.consume(updates) }
+                group.addTask { try await self.consume(updates, run: id) }
                 group.addTask { try await self.waitForEndOfSpeech(timeout: timeout, silenceTimeout: silenceTimeout) }
                 defer { group.cancelAll() }
                 guard let first = try await group.next(), !first.isEmpty else { throw Error.noSpeech }
@@ -235,12 +236,18 @@ final class SpeechService {
         }
     }
 
-    private func consume(_ updates: some AsyncSequence<Update, any Swift.Error> & Sendable) async throws -> String {
-        for try await update in updates {
-            log.debug("update final=\(update.isFinal) \(update.text, privacy: .public)")
+    /// Feeds updates into the shared transcript while `run` is still the current listen; a cancelled
+    /// older listen's late results are dropped.
+    private func consume(
+        _ updates: some AsyncSequence<Update, any Swift.Error> & Sendable,
+        run id: Int
+    ) async throws -> String {
+        for try await update in updates where id == runID {
+            // Transcripts are whatever the open mic heard: keep them out of persisted logs.
+            log.debug("update final=\(update.isFinal) \(update.text, privacy: .private)")
             ingest(text: update.text, isFinal: update.isFinal)
         }
-        log.info("result stream ended, transcript '\(self.transcript, privacy: .public)'")
+        log.info("result stream ended, transcript '\(self.transcript, privacy: .private)'")
         return transcript
     }
 
@@ -298,10 +305,12 @@ final class SpeechService {
 
     /// Releases this listen's session lease; stops the engine only if no newer listen has taken it over.
     private func stopMic(_ owner: Int) {
+        // Stop I/O before dropping the lease: the last lease deactivates the session.
+        if owner == micOwner {
+            audioEngine.stop()
+            audioEngine.inputNode.removeTap(onBus: 0)
+        }
         AudioSession.release()
-        guard owner == micOwner else { return }
-        audioEngine.stop()
-        audioEngine.inputNode.removeTap(onBus: 0)
     }
 
     /// Built `nonisolated` so the closure is not MainActor-isolated: it runs on the realtime audio thread.

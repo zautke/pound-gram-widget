@@ -22,14 +22,16 @@ struct VoiceConvertView: View {
     @State private var inSession = false
     /// End of the current listen window; `nil` when listening indefinitely.
     @State private var ringDeadline: Date?
-    /// Seconds left, frozen while pausing after unrecognized speech.
+    /// Seconds left, frozen while the recognizer starts up and while pausing after unrecognized speech.
     @State private var pausedRemaining: TimeInterval?
+    /// Seconds the current attempt may listen for; the ring starts counting when the mic goes live.
+    @State private var attemptBudget: TimeInterval?
 
     private var statusMessage: String {
         if speech.isPreparing { return "Downloading speech model\u{2026}" }
-        if pausedRemaining != nil { return "Try again\u{2026}" }
+        if pausedRemaining != nil, errorMessage != nil { return "Try again\u{2026}" }
         if speech.isListening { return "Listening\u{2026}" }
-        return "Tap to listen"
+        return inSession ? "Getting ready\u{2026}" : "Tap to listen"
     }
 
     var body: some View {
@@ -105,10 +107,11 @@ struct VoiceConvertView: View {
             case .active where returnedFromBackground:
                 returnedFromBackground = false
                 // Reopening the app: show a last result only if "Keep Last Result" is on.
-                if !speech.isBusy { lastResult = AppSettings.restoredLastResult() }
+                lastResult = AppSettings.restoredLastResult()
+                // Always a fresh listen: bumping the request cancels one interrupted by backgrounding.
                 // `listenRequest == 0`: the launch-time `.task` above hasn't started the first listen yet
                 // and will; starting one here too would race it.
-                if listenRequest > 0, !speech.isBusy { listenRequest += 1 }
+                if listenRequest > 0 { listenRequest += 1 }
             default:
                 break
             }
@@ -121,7 +124,13 @@ struct VoiceConvertView: View {
         // inside `listen()`: posting from a Swift task trips an accessibility runtime issue
         // ("unsafeForcedSync called from Swift Concurrent context").
         .onChange(of: speech.isListening) { _, listening in
-            if listening { AccessibilityNotification.Announcement("Listening").post() }
+            guard listening else { return }
+            AccessibilityNotification.Announcement("Listening").post()
+            // Start the ring on the recognizer's clock, not before model preparation and mic start-up.
+            if inSession, let budget = attemptBudget {
+                ringDeadline = .now + budget
+                pausedRemaining = nil
+            }
         }
         .onChange(of: errorMessage) { _, message in
             if let message { AccessibilityNotification.Announcement(message).post() }
@@ -138,13 +147,18 @@ struct VoiceConvertView: View {
     /// One listen window. Speech that doesn't parse shows an error, pauses the countdown for a second,
     /// then listens again with a fresh recognizer for whatever time is left.
     private func listen() async {
+        let request = listenRequest
         errorMessage = nil
         inSession = true
-        var remaining: Duration? = listenSeconds > 0 ? .seconds(listenSeconds) : nil
+        var budget: TimeInterval? = listenSeconds > 0 ? Double(listenSeconds) : nil
         defer {
-            inSession = false
-            ringDeadline = nil
-            pausedRemaining = nil
+            // A replacement listen may already own this state.
+            if request == listenRequest {
+                inSession = false
+                ringDeadline = nil
+                pausedRemaining = nil
+                attemptBudget = nil
+            }
         }
 
         do {
@@ -154,10 +168,16 @@ struct VoiceConvertView: View {
             defer { AudioSession.release() }
 
             while true {
-                let started = ContinuousClock.now
-                ringDeadline = remaining.map { .now + $0 / .seconds(1) }
-                let transcript = try await speech.recognize(timeout: remaining)
-                remaining = remaining.map { $0 - (ContinuousClock.now - started) }
+                // Hold the ring at the time left until the mic is live (see the `isListening` observer).
+                attemptBudget = budget
+                if let budget {
+                    ringDeadline = .now + budget
+                    pausedRemaining = budget
+                }
+                let transcript = try await speech.recognize(timeout: budget.map { .seconds($0) })
+                // Cancellation is cooperative: a replaced listen can still come back with words.
+                try Task.checkCancellation()
+                if budget != nil { budget = max(0, ringDeadline?.timeIntervalSinceNow ?? 0) }
 
                 switch LastConversion.fromVoice(transcript) {
                 case let .success(lc):
@@ -174,8 +194,8 @@ struct VoiceConvertView: View {
                 case let .failure(err):
                     errorMessage = humanize(err)
                     // Out of time: stop here with the error showing.
-                    if let left = remaining, left < .milliseconds(500) { return }
-                    pausedRemaining = remaining.map { $0 / .seconds(1) }
+                    if let left = budget, left < 0.5 { return }
+                    pausedRemaining = budget
                     try await Task.sleep(for: .seconds(1))
                     pausedRemaining = nil
                 }

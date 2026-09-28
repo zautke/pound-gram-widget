@@ -1,10 +1,10 @@
 # Session Log (newest first)
 
-## 2026-09-28 — voice-first UX on device (hemoila)
-- Set team 52AA89AC9T + automatic signing; built/ran on hemoila through Xcode MCP.
+## 2026-09-28 — voice-first UX on device
+- Set team 52AA89AC9T + automatic signing; built/ran on a physical iPhone through Xcode MCP.
 - App now opens listening; countdown ring; settings + history slide-over panels (top-right group); Keep Last Result toggle; persistent history with day headers + swipe delete.
 - Text-field focus clears fields and closes voice sheet.
-- Retro TTS: Fred voice + decimator + small-speaker EQ.
+- TTS: briefly a retro Fred-voice effect chain, then replaced (same day) by the best installed US English female voice played without effects.
 - Bug: ring never showed. Root cause from logs: SwiftUI restarted `.task(id:)` at launch → two listens; the cancelled one's cleanup reset `isListening`/`listenDeadline` and stopped the shared engine. Fix: per-run IDs (`runID`, `micOwner`) + `Task.checkCancellation()` before mic start.
 - Researched Xcode 27 agent permission files; auto-mode blocked writing an allow-all script; manual steps given to user.
 

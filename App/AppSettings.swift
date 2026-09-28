@@ -112,6 +112,8 @@ struct SettingsPanel: View {
     @State private var customText = ""
     @State private var tts = TTSService()
     @State private var isPlayingSample = false
+    /// Sample playback; cancelled when the panel closes so it can't play into the reopened microphone.
+    @State private var sample: Task<Void, Never>?
 
     /// Presets, plus the current value when it was typed in as a custom time.
     private var pickerChoices: [Int] {
@@ -147,7 +149,7 @@ struct SettingsPanel: View {
                 Section {
                     LabeledContent("Voice", value: TTSService.voiceDescription)
                     Button("Play Sample", systemImage: isPlayingSample ? "speaker.wave.3.fill" : "play.fill") {
-                        Task {
+                        sample = Task {
                             isPlayingSample = true
                             await tts.speak("5 pounds is 2,267.96 grams")
                             isPlayingSample = false
@@ -160,7 +162,7 @@ struct SettingsPanel: View {
                     Text(
                         "Uses the best US English female voice on this iPhone. For the most natural sound, download "
                             + "Ava or Zoe (Premium) in Settings > Accessibility > Read & Speak > Voices > English, "
-                            + "then reopen PoundsGrams."
+                            + "and it's used right away."
                     )
                 }
                 Section {
@@ -171,6 +173,7 @@ struct SettingsPanel: View {
             }
             .scrollContentBackground(.hidden)
             .scrollDismissesKeyboard(.interactively)
+            .onDisappear { sample?.cancel() }
         }
     }
 }

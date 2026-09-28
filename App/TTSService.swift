@@ -13,12 +13,15 @@ final class TTSService {
     private var connectedFormat: AVAudioFormat?
 
     /// Best-quality US English female voice installed: Premium (neural) beats Enhanced beats Default.
-    /// Premium voices such as Ava or Zoe are downloaded in Settings > Accessibility > Spoken Content > Voices;
-    /// without one, the built-in compact female voice is used.
-    static let voice = AVSpeechSynthesisVoice.speechVoices()
-        .filter { $0.language == "en-US" && $0.gender == .female && !$0.voiceTraits.contains(.isNoveltyVoice) }
-        .max { $0.quality.rawValue < $1.quality.rawValue }
-        ?? AVSpeechSynthesisVoice(language: "en-US")
+    /// Premium voices such as Ava or Zoe are downloaded in Settings > Accessibility > Read & Speak > Voices;
+    /// without one, the built-in compact female voice is used. Re-read on every use so a voice
+    /// downloaded while the app is running is picked up.
+    static var voice: AVSpeechSynthesisVoice? {
+        AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language == "en-US" && $0.gender == .female && !$0.voiceTraits.contains(.isNoveltyVoice) }
+            .max { $0.quality.rawValue < $1.quality.rawValue }
+            ?? AVSpeechSynthesisVoice(language: "en-US")
+    }
 
     /// Name and quality tier of ``voice`` for display, e.g. "Ava (Premium)".
     static var voiceDescription: String {
